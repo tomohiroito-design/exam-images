@@ -16,6 +16,17 @@
     .grow { flex: 1; min-width: 0; }
     .small2 { opacity:.8; font-size:12px; word-break:break-all; }
     .danger { border:1px solid rgba(255,0,0,.25); }
+    input[type="password"], input[type="text"]{
+      width:100%;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.22);
+      color: inherit;
+      outline: none;
+    }
+    .keyState { opacity:.85; font-size: 12px; }
+    .btnRow { display:flex; gap:10px; flex-wrap:wrap; }
   </style>
 </head>
 <body>
@@ -24,58 +35,56 @@
       <h1>画像アップローダー</h1>
       <div class="sub">合言葉がある人だけアップロード/削除できます（sessionStorageに保存）</div>
 
-      <div style="margin-top:10px; display:flex; gap:10px;">
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
         <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
            href="./">← 画像格納庫へ戻る</a>
-        <button id="setKey">合言葉を変更</button>
       </div>
 
-      <div id="toast" class="toast"></div>
+      <div id="toast" class="toast" style="display:none;"></div>
     </div>
   </header>
 
   <main class="wrap">
-    <div class="panel">
-      <h2 style="margin-bottom:10px;">アップロード</h2>
-
+    <section class="panel">
+      <h2 style="margin:0 0 10px;">合言葉</h2>
       <div class="row">
         <div>
-          <div class="small">ファイル</div>
-          <input id="file" type="file" accept="image/*" multiple />
+          <input id="keyInput" type="password" placeholder="合言葉を入力して保存" autocomplete="current-password" />
+          <div id="keyState" class="keyState"></div>
         </div>
-        <div>
-          <div class="small">カテゴリ</div>
-          <input id="category" placeholder="例）未分類 / ブランド / 接客 など" />
-        </div>
-        <div>
-          <div class="small">タグ（カンマ区切り）</div>
-          <input id="tags" placeholder="例）時計,ロレックス,文字盤" />
-        </div>
-        <div>
-          <div class="small">タイトル（空ならファイル名）</div>
-          <input id="title" placeholder="例）ロレックスの文字盤（例）" />
+        <div class="btnRow">
+          <button id="saveKey" class="primary" type="button">保存</button>
+          <button id="clearKey" type="button">消す</button>
         </div>
       </div>
+    </section>
 
-      <div style="margin-top:10px; display:flex; gap:10px;">
-        <button id="upload" class="primary">選択した画像をアップロード</button>
-        <button id="reload">一覧を再読み込み</button>
+    <section class="panel" style="margin-top:14px;">
+      <h2 style="margin:0 0 10px;">アップロード</h2>
+      <div class="row">
+        <input id="title" type="text" placeholder="タイトル（任意）" />
+        <input id="category" type="text" placeholder="カテゴリ（任意）例: 指輪" />
+        <input id="tags" type="text" placeholder="タグ（任意）例: K18,ダイヤ" />
       </div>
-
+      <div class="row" style="margin-top:10px;">
+        <input id="file" type="file" multiple accept="image/*" />
+        <button id="upload" class="primary" type="button">アップロード</button>
+      </div>
       <div id="result" class="list"></div>
-    </div>
+    </section>
 
-    <div class="panel" style="margin-top:14px;">
-      <h2 style="margin-bottom:10px;">削除（画像格納庫の一覧）</h2>
-      <div class="small">※削除すると images/ から消え、images.json からも消します</div>
+    <section class="panel" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <h2 style="margin:0;">削除（一覧）</h2>
+        <button id="reload" type="button">一覧更新</button>
+      </div>
       <div id="list" class="list"></div>
-    </div>
+    </section>
   </main>
 
 <script>
 const WORKER = "https://exam-image-uploader.tomohiro-ito.workers.dev";
 const KEY_NAME = "ADMIN_KEY";
-
 const $ = (id) => document.getElementById(id);
 
 function toast(msg) {
@@ -83,19 +92,17 @@ function toast(msg) {
   el.textContent = msg;
   el.style.display = "block";
   clearTimeout(window.__t);
-  window.__t = setTimeout(() => (el.style.display = "none"), 1400);
+  window.__t = setTimeout(() => (el.style.display = "none"), 1600);
 }
 
 function getKey() {
   return sessionStorage.getItem(KEY_NAME) || "";
 }
 
-async function askKey(force=false) {
-  if (!force && getKey()) return;
-  const k = prompt("合言葉を入力（このタブの間だけ保存）");
-  if (!k) { toast("合言葉が必要です"); return; }
-  sessionStorage.setItem(KEY_NAME, k);
-  toast("合言葉を保存しました");
+function setKeyState() {
+  $("keyState").textContent = getKey()
+    ? "保存済み（このタブを閉じるまで有効）"
+    : "未設定（保存してから操作できます）";
 }
 
 async function toBase64DataUrl(file) {
@@ -108,26 +115,33 @@ async function toBase64DataUrl(file) {
 }
 
 async function api(path, body) {
+  const key = getKey();
+  if (!key) throw new Error("合言葉が未設定です（上で保存してください）");
+
   const res = await fetch(WORKER + path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Admin-Key": getKey(),
+      "X-Admin-Key": key,
     },
     body: JSON.stringify(body),
   });
+
   const text = await res.text();
   let json = null;
   try { json = JSON.parse(text); } catch {}
+
   if (!res.ok) {
-    const msg = (json && (json.message || json.error)) ? (json.message || json.error) : text;
+    const msg = (json && (json.error || json.message)) ? (json.error || json.message) : text;
     throw new Error(`HTTP ${res.status}: ${msg}`);
+  }
+  if (json && json.ok === false) {
+    throw new Error(json.error || "Unknown error");
   }
   return json || {};
 }
 
 async function loadList() {
-  // GitHub Pages側の images.json を読む（格納庫と同じ）
   const res = await fetch("./images.json", { cache: "no-store" });
   const data = await res.json().catch(() => []);
   return Array.isArray(data) ? data : [];
@@ -135,19 +149,21 @@ async function loadList() {
 
 function renderItems(items) {
   $("list").innerHTML = items.map(x => {
-    const url = x.url || ("./" + (x.path || ("images/" + x.filename)));
-    const name = x.filename || x.path || "(unknown)";
+    const path = x.path || ("images/" + (x.filename || ""));
+    const url = x.url || ("./" + path);
+    const label = x.title || x.filename || x.path || "(unknown)";
     return `
-      <div class="item danger">
-        <img src="${url}" alt="">
+      <div class="item">
+        <img src="${escapeHtml(url)}" alt="">
         <div class="grow">
-          <div><b>${escapeHtml(name)}</b></div>
+          <div><b>${escapeHtml(label)}</b></div>
+          <div class="small2 mono">${escapeHtml(path)}</div>
           <div class="small2 mono">${escapeHtml(url)}</div>
           <div class="small2">カテゴリ: ${escapeHtml(x.category || "未分類")} / タグ: ${(x.tags||[]).map(escapeHtml).join(", ")}</div>
         </div>
-        <div style="display:flex; gap:10px;">
-          <button onclick="copyText('${escapeJs(url)}')">URLコピー</button>
-          <button class="primary" onclick="doDelete('${escapeJs(name)}')">削除</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" onclick="copyText('${escapeJs(url)}')">URLコピー</button>
+          <button class="primary" type="button" onclick="doDelete('${escapeJs(path)}')">削除</button>
         </div>
       </div>
     `;
@@ -160,8 +176,6 @@ async function refresh() {
 }
 
 async function doUpload() {
-  await askKey(false);
-
   const files = $("file").files;
   if (!files || !files.length) { toast("ファイルを選んでね"); return; }
 
@@ -171,53 +185,62 @@ async function doUpload() {
 
   $("result").innerHTML = "";
 
-  for (const file of files) {
-    const base64 = await toBase64DataUrl(file);
-    try {
-      const out = await api("/upload", {
-        filename: file.name,
-        base64,
-        category,
-        tags,
-        title: title || file.name
-      });
-
-      $("result").insertAdjacentHTML("beforeend", `
-        <div class="item">
-          <img src="${out.url}" alt="">
-          <div class="grow">
-            <div><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
-            <div class="small2 mono">${escapeHtml(out.url)}</div>
-          </div>
-          <div style="display:flex; gap:10px;">
-            <button onclick="copyText('${escapeJs(out.url)}')">URLコピー</button>
-            <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;" href="${out.url}" target="_blank">開く</a>
-          </div>
-        </div>
-      `);
-
-    } catch (e) {
-      $("result").insertAdjacentHTML("beforeend", `
-        <div class="item danger">
-          <div class="grow">
-            <div><b>失敗</b>：${escapeHtml(file.name)}</div>
-            <div class="small2 mono">${escapeHtml(e.message)}</div>
-          </div>
-        </div>
-      `);
-    }
-  }
-
-  await refresh();
-  toast("完了");
-}
-
-async function doDelete(name) {
-  await askKey(false);
-  if (!confirm(`削除する？\n${name}`)) return;
+  $("upload").disabled = true;
 
   try {
-    await api("/delete", { filename: name });
+    for (const file of files) {
+      const base64 = await toBase64DataUrl(file);
+      try {
+        const out = await api("/upload", {
+          filename: file.name,
+          base64,
+          category,
+          tags,
+          title: title || file.name
+        });
+
+        $("result").insertAdjacentHTML("beforeend", `
+          <div class="item">
+            <img src="${escapeHtml(out.url)}" alt="">
+            <div class="grow">
+              <div><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
+              <div class="small2 mono">${escapeHtml(out.url)}</div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button type="button" onclick="copyText('${escapeJs(out.url)}')">URLコピー</button>
+              <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
+                 href="${escapeHtml(out.url)}" target="_blank" rel="noopener">開く</a>
+            </div>
+          </div>
+        `);
+
+      } catch (e) {
+        $("result").insertAdjacentHTML("beforeend", `
+          <div class="item danger">
+            <div class="grow">
+              <div><b>失敗</b>：${escapeHtml(file.name)}</div>
+              <div class="small2 mono">${escapeHtml(e.message)}</div>
+            </div>
+          </div>
+        `);
+      }
+    }
+
+    await refresh();
+    toast("完了");
+  } finally {
+    $("upload").disabled = false;
+    $("file").value = "";
+  }
+}
+
+async function doDelete(pathOrName) {
+  if (!getKey()) { toast("合言葉が未設定です"); return; }
+
+  if (!confirm(`削除する？\n${pathOrName}`)) return;
+
+  try {
+    await api("/delete", { filename: pathOrName }); // Worker側が path もOK
     toast("削除しました");
     await refresh();
   } catch (e) {
@@ -236,16 +259,34 @@ function escapeHtml(s) {
     .replaceAll(">","&gt;").replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
-function escapeJs(s) { return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'"); }
+function escapeJs(s) {
+  return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'");
+}
 
 window.doDelete = doDelete;
 window.copyText = copyText;
 
 window.addEventListener("DOMContentLoaded", async () => {
-  await askKey(false);
-  $("setKey").addEventListener("click", () => askKey(true));
+  setKeyState();
+
+  $("saveKey").addEventListener("click", () => {
+    const v = ($("keyInput").value || "").trim();
+    if (!v) { toast("合言葉が空です"); return; }
+    sessionStorage.setItem(KEY_NAME, v);
+    $("keyInput").value = "";
+    setKeyState();
+    toast("合言葉を保存しました");
+  });
+
+  $("clearKey").addEventListener("click", () => {
+    sessionStorage.removeItem(KEY_NAME);
+    setKeyState();
+    toast("合言葉を消しました");
+  });
+
   $("upload").addEventListener("click", doUpload);
   $("reload").addEventListener("click", () => refresh().then(() => toast("更新しました")));
+
   await refresh();
 });
 </script>
