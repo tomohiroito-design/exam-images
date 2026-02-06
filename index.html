@@ -5,12 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>試験用 画像格納庫</title>
   <link rel="stylesheet" href="./assets/style.css" />
+  <style>
+    /* 追加は最小：管理パネル用だけ */
+    .adminWrap { margin-top: 18px; }
+    .adminHead { display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .adminHead .small { opacity:.8; font-size: 12px; }
+    .adminPanel { margin-top: 10px; border-radius: 14px; overflow:hidden; border:1px solid rgba(255,255,255,0.10); background: rgba(0,0,0,0.15); }
+    .adminPanel iframe { width: 100%; height: 860px; border:0; display:block; background: transparent; }
+    .adminPanel.isHidden { display:none; }
+  </style>
 </head>
+
 <body>
   <header>
     <div class="wrap">
       <h1>試験用 画像格納庫</h1>
-      <div class="sub">GitHub Pages 配信（直URLをコピーして試験システムに貼る）</div>
+      <div class="sub">images.json を元に一覧表示 / URLをコピーして使う</div>
 
       <div class="controls">
         <input id="q" placeholder="検索（ファイル名 / タグ / カテゴリ）" />
@@ -20,16 +30,9 @@
 
       <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
         <button id="reload" class="primary">一覧を再読み込み</button>
-
-        <a href="./uploader.html" class="primary"
-           style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
-          画像を追加・削除（管理）
-        </a>
-
-        <!-- ここを「ボタン」から「リンク」に置換して混乱を消す -->
-        <a href="./uploader.html"
-           style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
-          追加手順
+        <button id="toggleAdmin" type="button">管理（アップロード/削除）</button>
+        <a href="./uploader.html" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
+          管理ページを別タブで開く
         </a>
       </div>
 
@@ -39,6 +42,23 @@
 
   <main class="wrap">
     <div id="grid" class="grid"></div>
+
+    <!-- 管理パネル（uploaderを埋め込み） -->
+    <section class="adminWrap">
+      <div class="adminHead">
+        <div>
+          <h2 style="margin:0;">管理パネル</h2>
+          <div class="small">ここでアップロード/削除できます（合言葉はuploader側で保存）</div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button id="adminReloadList" type="button">削除後に一覧更新</button>
+        </div>
+      </div>
+
+      <div id="adminPanel" class="adminPanel isHidden">
+        <iframe id="adminFrame" src="./uploader.html" loading="lazy"></iframe>
+      </div>
+    </section>
   </main>
 
   <div id="toast" class="toast"></div>
@@ -59,5 +79,27 @@
   </div>
 
   <script src="./assets/app.js"></script>
+  <script>
+    // 管理パネルの開閉だけ追加（既存app.jsに干渉しない）
+    (function(){
+      const btn = document.getElementById("toggleAdmin");
+      const panel = document.getElementById("adminPanel");
+      const reloadBtn = document.getElementById("adminReloadList");
+
+      btn?.addEventListener("click", () => {
+        panel.classList.toggle("isHidden");
+        if (!panel.classList.contains("isHidden")) {
+          // 開いた直後に位置を合わせる
+          panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+
+      reloadBtn?.addEventListener("click", () => {
+        // app.js 側に reload ボタンがある想定（既にある）
+        const r = document.getElementById("reload");
+        if (r) r.click();
+      });
+    })();
+  </script>
 </body>
 </html>
