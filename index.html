@@ -6,13 +6,51 @@
   <title>試験用 画像格納庫</title>
   <link rel="stylesheet" href="./assets/style.css" />
   <style>
-    /* 追加は最小：管理パネル用だけ */
-    .adminWrap { margin-top: 18px; }
-    .adminHead { display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
-    .adminHead .small { opacity:.8; font-size: 12px; }
-    .adminPanel { margin-top: 10px; border-radius: 14px; overflow:hidden; border:1px solid rgba(255,255,255,0.10); background: rgba(0,0,0,0.15); }
-    .adminPanel iframe { width: 100%; height: 860px; border:0; display:block; background: transparent; }
-    .adminPanel.isHidden { display:none; }
+    /* 追加は最小：テンキーモーダルのみ */
+    .gateOverlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display:none; align-items:center; justify-content:center; padding: 18px;
+      z-index: 9999;
+    }
+    .gateBox {
+      width: min(420px, 100%);
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(10,14,20,0.92);
+      padding: 14px;
+    }
+    .gateTop { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .gateTitle { font-weight: 700; }
+    .gateDisp {
+      margin-top: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 12px;
+      background: rgba(0,0,0,0.25);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 20px;
+      letter-spacing: 2px;
+    }
+    .gateHint { opacity: .75; font-size: 12px; margin-top: 6px; }
+    .pad {
+      margin-top: 12px;
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .pad button {
+      padding: 14px 0;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: inherit;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .pad button:active { transform: translateY(1px); }
+    .pad .wide { grid-column: span 3; }
+    .pad .danger { background: rgba(231,76,60,0.12); border-color: rgba(231,76,60,0.35); }
+    .pad .primary { background: rgba(52,152,219,0.14); border-color: rgba(52,152,219,0.35); }
   </style>
 </head>
 
@@ -20,20 +58,17 @@
   <header>
     <div class="wrap">
       <h1>試験用 画像格納庫</h1>
-      <div class="sub">images.json を元に一覧表示 / URLをコピーして使う</div>
+      <div class="sub">閲覧用（一覧・検索・URLコピー）</div>
+
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button id="openGate" class="primary">格納庫（管理ページ）</button>
+        <button id="reload" class="primary">一覧を再読み込み</button>
+      </div>
 
       <div class="controls">
         <input id="q" placeholder="検索（ファイル名 / タグ / カテゴリ）" />
         <select id="category"></select>
         <select id="tag"></select>
-      </div>
-
-      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-        <button id="reload" class="primary">一覧を再読み込み</button>
-        <button id="toggleAdmin" type="button">管理（アップロード/削除）</button>
-        <a href="./uploader.html" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
-          管理ページを別タブで開く
-        </a>
       </div>
 
       <div id="stats" class="stats"></div>
@@ -42,23 +77,6 @@
 
   <main class="wrap">
     <div id="grid" class="grid"></div>
-
-    <!-- 管理パネル（uploaderを埋め込み） -->
-    <section class="adminWrap">
-      <div class="adminHead">
-        <div>
-          <h2 style="margin:0;">管理パネル</h2>
-          <div class="small">ここでアップロード/削除できます（合言葉はuploader側で保存）</div>
-        </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button id="adminReloadList" type="button">削除後に一覧更新</button>
-        </div>
-      </div>
-
-      <div id="adminPanel" class="adminPanel isHidden">
-        <iframe id="adminFrame" src="./uploader.html" loading="lazy"></iframe>
-      </div>
-    </section>
   </main>
 
   <div id="toast" class="toast"></div>
@@ -78,28 +96,110 @@
     </div>
   </div>
 
+  <!-- Gate Modal -->
+  <div id="gateOverlay" class="gateOverlay" aria-hidden="true">
+    <div class="gateBox" role="dialog" aria-modal="true" aria-label="管理ページ入室">
+      <div class="gateTop">
+        <div class="gateTitle">管理ページ入室</div>
+        <button id="gateExitTop" class="danger" type="button" style="padding:8px 12px;border-radius:12px;">EXIT</button>
+      </div>
+
+      <div id="gateDisp" class="gateDisp">#----</div>
+      <div class="gateHint">テンキーをクリックして入力（4桁）</div>
+
+      <div class="pad" id="pad"></div>
+    </div>
+  </div>
+
   <script src="./assets/app.js"></script>
   <script>
-    // 管理パネルの開閉だけ追加（既存app.jsに干渉しない）
-    (function(){
-      const btn = document.getElementById("toggleAdmin");
-      const panel = document.getElementById("adminPanel");
-      const reloadBtn = document.getElementById("adminReloadList");
+    const WORKER = "https://exam-image-uploader.tomohiro-ito.workers.dev";
+    const TOKEN_KEY = "ADMIN_TOKEN";
 
-      btn?.addEventListener("click", () => {
-        panel.classList.toggle("isHidden");
-        if (!panel.classList.contains("isHidden")) {
-          // 開いた直後に位置を合わせる
-          panel.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      });
+    const overlay = document.getElementById("gateOverlay");
+    const disp = document.getElementById("gateDisp");
+    const pad = document.getElementById("pad");
 
-      reloadBtn?.addEventListener("click", () => {
-        // app.js 側に reload ボタンがある想定（既にある）
-        const r = document.getElementById("reload");
-        if (r) r.click();
-      });
+    let digits = "";
+
+    document.getElementById("openGate").addEventListener("click", () => openGate());
+    document.getElementById("gateExitTop").addEventListener("click", () => closeGate());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeGate(); });
+
+    function openGate() {
+      digits = "";
+      renderDisp();
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    function closeGate() {
+      overlay.style.display = "none";
+      overlay.setAttribute("aria-hidden", "true");
+      digits = "";
+      renderDisp();
+    }
+
+    function renderDisp() {
+      const shown = (digits + "----").slice(0, 4);
+      disp.textContent = "#" + shown;
+    }
+
+    function makeBtn(label, onClick, cls="") {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      if (cls) b.className = cls;
+      b.addEventListener("click", onClick);
+      return b;
+    }
+
+    // Build keypad
+    (function buildPad(){
+      const nums = ["1","2","3","4","5","6","7","8","9"];
+      for (const n of nums) pad.appendChild(makeBtn(n, () => pushDigit(n)));
+      pad.appendChild(makeBtn("CLEAR", () => { digits=""; renderDisp(); }, "danger"));
+      pad.appendChild(makeBtn("0", () => pushDigit("0")));
+      pad.appendChild(makeBtn("ENTER", () => enter(), "primary"));
+      pad.appendChild(makeBtn("EXIT", () => closeGate(), "danger wide"));
     })();
+
+    function pushDigit(n) {
+      if (digits.length >= 4) return;
+      digits += n;
+      renderDisp();
+      if (digits.length === 4) {
+        // optional auto-enter? 今回はENTER必須にして誤爆減らす
+      }
+    }
+
+    async function enter() {
+      if (digits.length !== 4) return alert("4桁入力してね");
+      const pin = "#" + digits;
+
+      try {
+        const res = await fetch(WORKER + "/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin })
+        });
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch { data = { ok:false, error:text }; }
+
+        if (!res.ok || !data.ok) {
+          alert(data.error || "認証に失敗しました");
+          digits = "";
+          renderDisp();
+          return;
+        }
+
+        sessionStorage.setItem(TOKEN_KEY, data.token);
+        // 入室
+        location.href = "./uploader.html";
+      } catch (e) {
+        alert("接続に失敗しました（ネットワーク/CORS）");
+      }
+    }
   </script>
 </body>
 </html>
