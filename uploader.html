@@ -6,25 +6,17 @@
   <title>画像アップローダー（管理）</title>
   <link rel="stylesheet" href="./assets/style.css" />
   <style>
-    .panel { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .row > * { flex: 1; min-width: 220px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
-    .list { display:grid; gap:10px; margin-top:12px; }
-    .item { display:flex; gap:12px; align-items:center; background: rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.08); padding:10px; border-radius: 14px; }
-    .item img { width:84px; height:56px; object-fit:cover; border-radius:10px; border:1px solid rgba(255,255,255,0.12); }
-    .grow { flex: 1; min-width: 0; }
-    .small2 { opacity:.85; font-size:12px; word-break:break-all; }
-    .danger { border:1px solid rgba(255,0,0,.25); }
-    input[type="text"]{
-      width:100%;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,0.14);
-      background: rgba(0,0,0,0.22);
-      color: inherit;
-      outline: none;
-    }
+    .panel{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .row>*{flex:1;min-width:220px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    .list{display:grid;gap:10px;margin-top:12px}
+    .item{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);padding:10px;border-radius:14px}
+    .item img{width:84px;height:56px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+    .grow{flex:1;min-width:0}
+    .small2{opacity:.85;font-size:12px;word-break:break-all}
+    .danger{border:1px solid rgba(255,0,0,.25)}
+    input[type="text"]{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:inherit;outline:none}
   </style>
 </head>
 <body>
@@ -88,7 +80,7 @@ function toast(msg) {
 }
 
 function getToken() {
-  try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
 }
 
 async function toBase64DataUrl(file) {
@@ -108,7 +100,7 @@ async function safeReadJson(res) {
 
 async function api(path, body) {
   const token = getToken();
-  if (!token) throw new Error("Not authenticated");
+  if (!token) throw new Error("Not authenticated (missing token)");
 
   const res = await fetch(WORKER + path, {
     method: "POST",
@@ -257,7 +249,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   $("logout").addEventListener("click", () => {
-    try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
+    try { localStorage.removeItem(TOKEN_KEY); } catch {}
     toast("退出しました");
     setTimeout(() => location.href = "./", 500);
   });
