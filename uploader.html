@@ -12,7 +12,6 @@
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
     .list{display:grid;gap:10px;margin-top:12px}
 
-    /* ★ここが本丸：長文でボタンが押し出されないように */
     .item{
       display:flex;
       gap:12px;
@@ -21,7 +20,7 @@
       border:1px solid rgba(255,255,255,.08);
       padding:10px;
       border-radius:14px;
-      overflow:hidden; /* 横に伸びない */
+      overflow:hidden;
     }
     .item img{
       width:84px;height:56px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12);
@@ -36,10 +35,9 @@
 
     .grow{
       flex:1 1 auto;
-      min-width:0;         /* ellipsis のために必須 */
-      overflow:hidden;     /* はみ出し防止 */
+      min-width:0;
+      overflow:hidden;
     }
-
     .line-ell{
       white-space:nowrap;
       overflow:hidden;
@@ -51,7 +49,7 @@
     input[type="text"]{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:inherit;outline:none}
 
     .actions{
-      flex:0 0 auto;       /* ★縮まない */
+      flex:0 0 auto;
       display:flex;
       gap:10px;
       flex-wrap:wrap;
@@ -156,7 +154,7 @@ async function api(path, body) {
   return data;
 }
 
-// ★CDNキャッシュ回避
+// ★CDNキャッシュ回避（images.json）
 async function loadList() {
   const res = await fetch(`./images.json?t=${Date.now()}`, { cache: "no-store" });
   const data = await safeReadJson(res);
@@ -232,6 +230,7 @@ async function doUpload() {
   try {
     for (const file of files) {
       const base64 = await toBase64DataUrl(file);
+
       try {
         const out = await api("/upload", {
           filename: file.name,
@@ -241,9 +240,13 @@ async function doUpload() {
           title: title || file.name
         });
 
+        // ★ここが本丸：成功カードのサムネは out.url じゃなく base64 で即表示
+        // ただし「開く/コピー」は out.url を使う
+        const openUrl = out.url + `?t=${Date.now()}`;
+
         $("result").insertAdjacentHTML("beforeend", `
           <div class="item">
-            <img src="${escapeHtml(out.url)}" alt="">
+            <img src="${escapeHtml(base64)}" alt="">
             <div class="grow">
               <div class="line-ell"><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
               <div class="small2 mono line-ell">${escapeHtml(out.url)}</div>
@@ -251,7 +254,7 @@ async function doUpload() {
             <div class="actions">
               <button type="button" onclick="copyText('${escapeJs(out.url)}')">URLコピー</button>
               <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
-                 href="${escapeHtml(out.url)}" target="_blank" rel="noopener">開く</a>
+                 href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">開く</a>
             </div>
           </div>
         `);
@@ -266,6 +269,7 @@ async function doUpload() {
         `);
       }
     }
+
     await refresh();
     toast("完了");
   } finally {
