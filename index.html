@@ -6,54 +6,20 @@
   <title>試験用 画像格納庫</title>
   <link rel="stylesheet" href="./assets/style.css" />
   <style>
-    /* 追加は最小：テンキーモーダルのみ */
-    .gateOverlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-      display:none; align-items:center; justify-content:center; padding: 18px;
-      z-index: 9999;
-    }
-    .gateBox {
-      width: min(420px, 100%);
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(10,14,20,0.92);
-      padding: 14px;
-    }
-    .gateTop { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .gateTitle { font-weight: 700; }
-    .gateDisp {
-      margin-top: 12px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.12);
-      padding: 12px;
-      background: rgba(0,0,0,0.25);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 20px;
-      letter-spacing: 2px;
-    }
-    .gateHint { opacity: .75; font-size: 12px; margin-top: 6px; }
-    .pad {
-      margin-top: 12px;
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-    }
-    .pad button {
-      padding: 14px 0;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.06);
-      color: inherit;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .pad button:active { transform: translateY(1px); }
-    .pad .wide { grid-column: span 3; }
-    .pad .danger { background: rgba(231,76,60,0.12); border-color: rgba(231,76,60,0.35); }
-    .pad .primary { background: rgba(52,152,219,0.14); border-color: rgba(52,152,219,0.35); }
+    .gateOverlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:9999}
+    .gateBox{width:min(420px,100%);border-radius:16px;border:1px solid rgba(255,255,255,.12);background:rgba(10,14,20,.92);padding:14px}
+    .gateTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .gateTitle{font-weight:700}
+    .gateDisp{margin-top:12px;border-radius:14px;border:1px solid rgba(255,255,255,.12);padding:12px;background:rgba(0,0,0,.25);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:20px;letter-spacing:2px}
+    .gateHint{opacity:.75;font-size:12px;margin-top:6px}
+    .pad{margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .pad button{padding:14px 0;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:inherit;cursor:pointer;font-size:16px}
+    .pad button:active{transform:translateY(1px)}
+    .pad .wide{grid-column:span 3}
+    .pad .danger{background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35)}
+    .pad .primary{background:rgba(52,152,219,.14);border-color:rgba(52,152,219,.35)}
   </style>
 </head>
-
 <body>
   <header>
     <div class="wrap">
@@ -114,7 +80,7 @@
   <script src="./assets/app.js"></script>
   <script>
     const WORKER = "https://exam-image-uploader.tomohiro-ito.workers.dev";
-    const TOKEN_KEY = "ADMIN_TOKEN";
+    const TOKEN_KEY = "ADMIN_TOKEN"; // ★固定（uploader側も同じ）
 
     const overlay = document.getElementById("gateOverlay");
     const disp = document.getElementById("gateDisp");
@@ -138,7 +104,6 @@
       digits = "";
       renderDisp();
     }
-
     function renderDisp() {
       const shown = (digits + "----").slice(0, 4);
       disp.textContent = "#" + shown;
@@ -153,7 +118,6 @@
       return b;
     }
 
-    // Build keypad
     (function buildPad(){
       const nums = ["1","2","3","4","5","6","7","8","9"];
       for (const n of nums) pad.appendChild(makeBtn(n, () => pushDigit(n)));
@@ -167,9 +131,6 @@
       if (digits.length >= 4) return;
       digits += n;
       renderDisp();
-      if (digits.length === 4) {
-        // optional auto-enter? 今回はENTER必須にして誤爆減らす
-      }
     }
 
     async function enter() {
@@ -182,22 +143,24 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ pin })
         });
-        const text = await res.text();
-        let data = null;
-        try { data = JSON.parse(text); } catch { data = { ok:false, error:text }; }
+
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); } catch { data = { ok:false, error: raw }; }
 
         if (!res.ok || !data.ok) {
-          alert(data.error || "認証に失敗しました");
+          alert(`入室できません: ${data.error || ("HTTP " + res.status)}`);
           digits = "";
           renderDisp();
           return;
         }
 
-        sessionStorage.setItem(TOKEN_KEY, data.token);
-        // 入室
+        // ★ここがポイント：localStorageに保存（タブ跨いでも消えない）
+        localStorage.setItem(TOKEN_KEY, data.token);
+
         location.href = "./uploader.html";
       } catch (e) {
-        alert("接続に失敗しました（ネットワーク/CORS）");
+        alert(`接続に失敗: ${e.message || e}`);
       }
     }
   </script>
