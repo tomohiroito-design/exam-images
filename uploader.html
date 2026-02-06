@@ -11,17 +11,53 @@
     .row>*{flex:1;min-width:220px}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
     .list{display:grid;gap:10px;margin-top:12px}
-    .item{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);padding:10px;border-radius:14px}
-    .item img{width:84px;height:56px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+
+    /* ★ここが本丸：長文でボタンが押し出されないように */
+    .item{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      background:rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.08);
+      padding:10px;
+      border-radius:14px;
+      overflow:hidden; /* 横に伸びない */
+    }
+    .item img{
+      width:84px;height:56px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12);
+      flex:0 0 auto;
+    }
     .thumbPh{
       width:84px;height:56px;border-radius:10px;border:1px solid rgba(255,255,255,.12);
       display:flex;align-items:center;justify-content:center;
       background:rgba(255,255,255,.04);color:rgba(255,255,255,.65);font-size:11px;
+      flex:0 0 auto;
     }
-    .grow{flex:1;min-width:0}
-    .small2{opacity:.85;font-size:12px;word-break:break-all}
+
+    .grow{
+      flex:1 1 auto;
+      min-width:0;         /* ellipsis のために必須 */
+      overflow:hidden;     /* はみ出し防止 */
+    }
+
+    .line-ell{
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .small2{opacity:.85;font-size:12px}
     .danger{border:1px solid rgba(255,0,0,.25)}
     input[type="text"]{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:inherit;outline:none}
+
+    .actions{
+      flex:0 0 auto;       /* ★縮まない */
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      align-items:center;
+    }
   </style>
 </head>
 <body>
@@ -120,7 +156,7 @@ async function api(path, body) {
   return data;
 }
 
-// ★重要：CDNキャッシュ回避
+// ★CDNキャッシュ回避
 async function loadList() {
   const res = await fetch(`./images.json?t=${Date.now()}`, { cache: "no-store" });
   const data = await safeReadJson(res);
@@ -151,21 +187,19 @@ function renderItems(items) {
     const path = x.path || ("images/" + filename);
     const url  = x.url  || ("./" + path);
     const label = x.title || filename || x.path || "(unknown)";
-
     const imgId = "thumb_" + idx;
 
     return `
       <div class="item">
         <img id="${imgId}" src="${escapeHtml(url)}" alt="">
         <div class="grow">
-          <div><b>${escapeHtml(label)}</b></div>
-          <div class="small2 mono">${escapeHtml(path)}</div>
-          <div class="small2 mono">${escapeHtml(url)}</div>
-          <div class="small2">カテゴリ: ${escapeHtml(x.category || "未分類")} / タグ: ${(x.tags||[]).map(escapeHtml).join(", ")}</div>
+          <div class="line-ell"><b>${escapeHtml(label)}</b></div>
+          <div class="small2 mono line-ell">${escapeHtml(path)}</div>
+          <div class="small2 mono line-ell">${escapeHtml(url)}</div>
+          <div class="small2 line-ell">カテゴリ: ${escapeHtml(x.category || "未分類")} / タグ: ${(x.tags||[]).map(escapeHtml).join(", ")}</div>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="actions">
           <button type="button" onclick="copyText('${escapeJs(url)}')">URLコピー</button>
-          <!-- ★ここ：path/filename/url 全部渡す -->
           <button class="primary" type="button"
             onclick="doDelete('${escapeJs(path)}','${escapeJs(filename)}','${escapeJs(url)}')">削除</button>
         </div>
@@ -211,10 +245,10 @@ async function doUpload() {
           <div class="item">
             <img src="${escapeHtml(out.url)}" alt="">
             <div class="grow">
-              <div><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
-              <div class="small2 mono">${escapeHtml(out.url)}</div>
+              <div class="line-ell"><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
+              <div class="small2 mono line-ell">${escapeHtml(out.url)}</div>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div class="actions">
               <button type="button" onclick="copyText('${escapeJs(out.url)}')">URLコピー</button>
               <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
                  href="${escapeHtml(out.url)}" target="_blank" rel="noopener">開く</a>
@@ -225,8 +259,8 @@ async function doUpload() {
         $("result").insertAdjacentHTML("beforeend", `
           <div class="item danger">
             <div class="grow">
-              <div><b>失敗</b>：${escapeHtml(file.name)}</div>
-              <div class="small2 mono">${escapeHtml(e.message || String(e))}</div>
+              <div class="line-ell"><b>失敗</b>：${escapeHtml(file.name)}</div>
+              <div class="small2 mono line-ell">${escapeHtml(e.message || String(e))}</div>
             </div>
           </div>
         `);
