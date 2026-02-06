@@ -13,25 +13,25 @@ function getBaseUrl() {
   const origin = window.location.origin;
   const path = window.location.pathname;
   const repoRoot = path.endsWith("/") ? path : path.replace(/\/[^/]*$/, "/");
-  return origin + repoRoot;
+  return origin + repoRoot; // 例: https://tomohiroito-design.github.io/exam-images/
+}
+function makeUrl(relPath) {
+  // relPath: "images/xxx.jpg" or "/images/xxx.jpg"
+  const p = String(relPath || "").replace(/^\//, "");
+  return getBaseUrl() + p;
 }
 
-// ★ undefinedでも落ちないようにガード
-function makeUrl(p) {
-  const safe = (p ?? "").toString();
-  return getBaseUrl() + safe.replace(/^\//, "");
-}
-
-// ★ 1件のデータから「表示用URL」を決める（url優先、なければpath、なければfilename）
-function resolveImageUrl(x) {
-  if (x?.url) return x.url;               // ← あなたの今のimages.jsonはこれ
-  if (x?.path) return makeUrl(x.path);    // ← 旧形式にも対応
-  if (x?.filename) return makeUrl(`images/${x.filename}`);
-  return ""; // ここに来たらデータ壊れてる
+// ★ここが重要：images.json が url 形式でも path 形式でも表示できるようにする
+function resolveImageUrl(item) {
+  if (!item) return "";
+  if (item.url) return String(item.url);              // まず絶対URLを優先
+  if (item.path) return makeUrl(item.path);           // 次に相対path
+  if (item.filename) return makeUrl(`images/${encodeURIComponent(item.filename)}`); // 最後の保険
+  return "";
 }
 
 async function load() {
-  const res = await fetch(`./images.json?v=${Date.now()}`, { cache: "no-store" });
+  const res = await fetch("./images.json", { cache: "no-store" });
   const data = await res.json();
   state.items = Array.isArray(data) ? data : [];
   hydrateFilters();
@@ -39,8 +39,8 @@ async function load() {
 }
 
 function hydrateFilters() {
-  const cats = Array.from(new Set(state.items.map(x => x.category).filter(Boolean))).sort();
-  const tags = Array.from(new Set(state.items.flatMap(x => x.tags || []))).sort();
+  const cats = Array.from(new Set(state.items.map(x => x?.category).filter(Boolean))).sort();
+  const tags = Array.from(new Set(state.items.flatMap(x => (x?.tags || [])))).sort();
 
   $("category").innerHTML = [`<option value="all">カテゴリ: 全部</option>`]
     .concat(cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`))
@@ -54,13 +54,14 @@ function hydrateFilters() {
 function apply() {
   const q = state.q.trim().toLowerCase();
   state.filtered = state.items.filter((x) => {
+    if (!x) return false;
     if (state.category !== "all" && x.category !== state.category) return false;
     if (state.tag !== "all" && !(x.tags || []).includes(state.tag)) return false;
     if (!q) return true;
 
     const hay = [
       x.filename || "", x.title || "", x.category || "",
-      ...(x.tags || [])
+      ...(x.tags || []), x.path || "", x.url || ""
     ].join(" ").toLowerCase();
 
     return hay.includes(q);
@@ -71,44 +72,40 @@ function apply() {
 
 function render() {
   $("stats").textContent = `表示: ${state.filtered.length} / 全体: ${state.items.length}`;
-
   $("grid").innerHTML = state.filtered.map(cardHtml).join("") || `
     <div class="small" style="grid-column:1/-1; padding:10px; color: var(--muted);">
-      まだ画像がありません。
+      まだ画像がありません。/images に画像を置く（または uploader を使う）と一覧に出ます。
     </div>
   `;
 }
 
 function cardHtml(x) {
   const url = resolveImageUrl(x);
-
-  // urlが空なら「壊れたデータ」なので落とさず表示だけスキップ
-  if (!url) {
-    return `
-      <div class="card">
-        <div class="meta">
-          <div class="title">(invalid item)</div>
-          <div class="small">url/path/filename が無いデータがあります</div>
-        </div>
-      </div>
-    `;
-  }
-
   const tags = (x.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("");
   const title = escapeHtml(x.title || x.filename || "(no title)");
-  const small = escapeHtml(url);
+  const small = escapeHtml(url || "(no url)");
+
+  // url が無いデータが混ざっても落ちないようにする
+  const safeUrl = url ? url : "";
 
   return `
     <div class="card">
-      <img class="thumb" src="${url}" alt="${title}" loading="lazy" onclick="openModal('${encodeURIComponent(url)}')">
+      ${safeUrl
+        ? `<img class="thumb" src="${escapeHtml(safeUrl)}" alt="${title}" loading="lazy"
+             onclick="openModal('${encodeURIComponent(safeUrl)}')">`
+        : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:var(--muted);">
+             NO IMAGE
+           </div>`
+      }
       <div class="meta">
         <div class="title">${title}</div>
         <div class="small">${small}</div>
         <div class="tags">${tags}</div>
         <div class="actions">
-          <button class="primary" onclick="copyText('${escapeJs(url)}')">直URLコピー</button>
-          <button onclick="copyText('&lt;img src=&quot;${escapeJs(url)}&quot;&gt;')">HTML用</button>
-          <button onclick="copyText('![](${escapeJs(url)})')">Markdown用</button>
+          <button class="primary" onclick="copyText('${escapeJs(safeUrl)}')">直URLコピー</button>
+          <button onclick="copyText('&lt;img src=&quot;${escapeJs(safeUrl)}&quot;&gt;')">HTML用</button>
+          <button onclick="copyText('![](${escapeJs(safeUrl)})')">Markdown用</button>
+          <button onclick="copyText('${escapeJs(x.path || "")}')">pathコピー</button>
         </div>
       </div>
     </div>
@@ -116,7 +113,7 @@ function cardHtml(x) {
 }
 
 async function copyText(text) {
-  const normalized = text
+  const normalized = String(text || "")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     .replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
   await navigator.clipboard.writeText(normalized);
@@ -124,7 +121,8 @@ async function copyText(text) {
 }
 
 function openModal(encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
+  const url = decodeURIComponent(encodedUrl || "");
+  if (!url) return;
   $("modalImg").src = url;
   $("modalUrl").textContent = url;
   $("modal").style.display = "flex";
@@ -135,12 +133,14 @@ function closeModal() {
 }
 
 function escapeHtml(s) {
-  return String(s)
+  return String(s ?? "")
     .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;").replaceAll("\"", "&quot;")
     .replaceAll("'", "&#039;");
 }
-function escapeJs(s) { return String(s).replaceAll("\\", "\\\\").replaceAll("'", "\\'"); }
+function escapeJs(s) {
+  return String(s ?? "").replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
 
 window.addEventListener("DOMContentLoaded", () => {
   $("q").addEventListener("input", (e) => { state.q = e.target.value; apply(); });
