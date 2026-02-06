@@ -19,17 +19,19 @@
       </div>
 
       <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-  <button id="reload" class="primary">一覧を再読み込み</button>
+        <button id="reload" class="primary">一覧を再読み込み</button>
 
-  <a href="./uploader.html" class="primary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
-    画像を追加・削除（管理）
-  </a>
+        <a href="./uploader.html" class="primary"
+           style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
+          画像を追加・削除（管理）
+        </a>
 
-  <button onclick="alert('画像追加は「画像を追加・削除（管理）」から行えます。もし使えない場合は GitHub の /images に置いて images.json を更新してください。')">
-    追加手順
-  </button>
-</div>
-
+        <!-- ここを「ボタン」から「リンク」に置換して混乱を消す -->
+        <a href="./uploader.html"
+           style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none;">
+          追加手順
+        </a>
+      </div>
 
       <div id="stats" class="stats"></div>
     </div>
