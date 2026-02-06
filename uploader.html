@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>画像アップローダー</title>
+  <link rel="stylesheet" href="./assets/style.css" />
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>画像アップローダー</h1>
+      <div class="sub">
+        <a href="./index.html">← 画像格納庫へ</a>
+        <span style="margin-left:12px; opacity:.8;">（URLを知っている人用）</span>
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button id="pick" class="primary">画像を選んでアップロード</button>
+        <button id="refresh">images.json を再読み込み</button>
+        <button id="setpass">合言葉を入れ直す</button>
+      </div>
+
+      <div id="msg" class="stats" style="margin-top:10px;"></div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="small" style="margin:12px 0; color: var(--muted);">
+      ※アップロード/削除は合言葉必須。<br/>
+      ※GitHub Pages 反映は数秒〜数十秒遅れることがあります（404→更新で出るのはそれ）。
+    </div>
+
+    <div id="grid" class="grid"></div>
+  </main>
+
+<script>
+const WORKER_BASE = "https://exam-image-uploader.tomohiro-ito.workers.dev";
+
+const $ = (id)=>document.getElementById(id);
+const state = { items: [] };
+
+function setMsg(t){ $("msg").textContent = t; }
+
+function getPass() {
+  let p = sessionStorage.getItem("ADMIN_TOKEN") || "";
+  if (!p) {
+    p = prompt("合言葉（管理用パス）を入力してください") || "";
+    if (p) sessionStorage.setItem("ADMIN_TOKEN", p);
+  }
+  return p;
+}
+
+async function loadList() {
+  const r = await fetch("./images.json", { cache: "no-store" });
+  const data = await r.json().catch(()=>[]);
+  state.items = Array.isArray(data) ? data : [];
+  render();
+}
+
+function makeUrl(x) {
+  // images.json の url があればそれを優先、無ければ path を Pages 絶対URLに
+  if (x.url) return x.url;
+  if (x.path) return location.origin + location.pathname.replace(/\/[^/]*$/, "/") + x.path.replace(/^\/?/,"");
+  if (x.filename) return location.origin + location.pathname.replace(/\/[^/]*$/, "/") + "images/" + encodeURIComponent(x.filename);
+  return "";
+}
+
+function card(x){
+  const url = makeUrl(x);
+  const name = x.filename || x.title || "(no name)";
+  return `
+    <div class="card">
+      <img class="thumb" src="${url}" alt="${name}" loading="lazy">
+      <div class="meta">
+        <div class="title">${escapeHtml(name)}</div>
+        <div class="small" style="word-break:break-all;">${escapeHtml(url)}</div>
+        <div class="actions">
+          <button class="primary" onclick="copyText('${escapeJs(url)}')">直URLコピー</button>
+          <button onclick="doDelete('${escapeJs(x.filename || '')}')">削除</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function render(){
+  $("grid").innerHTML = state.items.map(card).join("") || `
+    <div class="small" style="grid-column:1/-1; padding:10px; color: var(--muted);">
+      まだ画像がありません。
+    </div>
+  `;
+}
+
+async function uploadFile(file){
+  const pass = getPass();
+  if (!pass) return setMsg("合言葉が未入力なので中断しました");
+
+  const base64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+
+  setMsg("アップロード中…");
+  const res = await fetch(WORKER_BASE + "/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type":"application/json",
+      "X-ADMIN-TOKEN": pass
+    },
+    body: JSON.stringify({ filename: file.name, base64 })
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    setMsg("失敗: " + text);
+    return;
+  }
+
+  const json = JSON.parse(text);
+  setMsg("成功: " + json.url);
+
+  // 反映遅延対策：少し待ってから再読込
+  setTimeout(loadList, 800);
+  // 画像URLも開く
+  window.open(json.url, "_blank");
+}
+
+async function doDelete(filename){
+  if (!filename) return alert("filename が取れませんでした（images.jsonの形式を確認してね）");
+  if (!confirm(`${filename} を削除します。よろしい？`)) return;
+
+  const pass = getPass();
+  if (!pass) return setMsg("合言葉が未入力なので中断しました");
+
+  setMsg("削除中…");
+  const res = await fetch(WORKER_BASE + "/delete", {
+    method: "POST",
+    headers: {
+      "Content-Type":"application/json",
+      "X-ADMIN-TOKEN": pass
+    },
+    body: JSON.stringify({ filename })
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    setMsg("削除失敗: " + text);
+    return;
+  }
+  setMsg("削除OK");
+  setTimeout(loadList, 800);
+}
+
+async function copyText(text){
+  await navigator.clipboard.writeText(text);
+  setMsg("コピーしました");
+}
+
+function escapeHtml(s){
+  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+function escapeJs(s){ return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'"); }
+
+$("pick").addEventListener("click", async ()=>{
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = ()=>{ if (input.files?.[0]) uploadFile(input.files[0]); };
+  input.click();
+});
+$("refresh").addEventListener("click", loadList);
+$("setpass").addEventListener("click", ()=>{
+  sessionStorage.removeItem("ADMIN_TOKEN");
+  getPass();
+});
+
+loadList();
+</script>
+</body>
+</html>
