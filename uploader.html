@@ -13,6 +13,11 @@
     .list{display:grid;gap:10px;margin-top:12px}
     .item{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);padding:10px;border-radius:14px}
     .item img{width:84px;height:56px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+    .thumbPh{
+      width:84px;height:56px;border-radius:10px;border:1px solid rgba(255,255,255,.12);
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(255,255,255,.04);color:rgba(255,255,255,.65);font-size:11px;
+    }
     .grow{flex:1;min-width:0}
     .small2{opacity:.85;font-size:12px;word-break:break-all}
     .danger{border:1px solid rgba(255,0,0,.25)}
@@ -76,7 +81,7 @@ function toast(msg) {
   el.textContent = msg;
   el.style.display = "block";
   clearTimeout(window.__t);
-  window.__t = setTimeout(() => (el.style.display = "none"), 1600);
+  window.__t = setTimeout(() => (el.style.display = "none"), 1800);
 }
 
 function getToken() {
@@ -104,10 +109,7 @@ async function api(path, body) {
 
   const res = await fetch(WORKER + path, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Token": token,
-    },
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
     body: JSON.stringify(body),
   });
 
@@ -118,13 +120,9 @@ async function api(path, body) {
   return data;
 }
 
-/**
- * ★ここが重要：GitHub Pages/CDNキャッシュを確実に避ける
- * ./images.json?t=タイムスタンプ で毎回URLを変える
- */
+// ★重要：CDNキャッシュ回避
 async function loadList() {
-  const bust = Date.now();
-  const res = await fetch(`./images.json?t=${bust}`, { cache: "no-store" });
+  const res = await fetch(`./images.json?t=${Date.now()}`, { cache: "no-store" });
   const data = await safeReadJson(res);
   if (!res.ok) return [];
   return Array.isArray(data) ? data : [];
@@ -140,14 +138,25 @@ function escapeJs(s) {
   return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'");
 }
 
+function onThumbError(imgEl) {
+  const ph = document.createElement("div");
+  ph.className = "thumbPh";
+  ph.textContent = "NO IMAGE";
+  imgEl.replaceWith(ph);
+}
+
 function renderItems(items) {
-  $("list").innerHTML = items.map(x => {
-    const path = x.path || ("images/" + (x.filename || ""));
-    const url = x.url || ("./" + path);
-    const label = x.title || x.filename || x.path || "(unknown)";
+  $("list").innerHTML = items.map((x, idx) => {
+    const filename = x.filename || "";
+    const path = x.path || ("images/" + filename);
+    const url  = x.url  || ("./" + path);
+    const label = x.title || filename || x.path || "(unknown)";
+
+    const imgId = "thumb_" + idx;
+
     return `
       <div class="item">
-        <img src="${escapeHtml(url)}" alt="">
+        <img id="${imgId}" src="${escapeHtml(url)}" alt="">
         <div class="grow">
           <div><b>${escapeHtml(label)}</b></div>
           <div class="small2 mono">${escapeHtml(path)}</div>
@@ -156,11 +165,18 @@ function renderItems(items) {
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button type="button" onclick="copyText('${escapeJs(url)}')">URLコピー</button>
-          <button class="primary" type="button" onclick="doDelete('${escapeJs(path)}')">削除</button>
+          <!-- ★ここ：path/filename/url 全部渡す -->
+          <button class="primary" type="button"
+            onclick="doDelete('${escapeJs(path)}','${escapeJs(filename)}','${escapeJs(url)}')">削除</button>
         </div>
       </div>
     `;
   }).join("") || `<div class="small" style="opacity:.8;">まだ何もありません</div>`;
+
+  items.forEach((_, idx) => {
+    const el = document.getElementById("thumb_" + idx);
+    if (el) el.addEventListener("error", () => onThumbError(el));
+  });
 }
 
 async function refresh() {
@@ -224,11 +240,11 @@ async function doUpload() {
   }
 }
 
-async function doDelete(path) {
-  if (!confirm(`削除する？\n${path}`)) return;
+async function doDelete(path, filename, url) {
+  if (!confirm(`削除する？\n${path}\n\n※実ファイルが無くても一覧(images.json)から消せます`)) return;
   try {
-    await api("/delete", { filename: path });
-    toast("削除しました");
+    const out = await api("/delete", { path, filename, url });
+    toast(`削除OK（index:${out.removedFromIndex} / 正規化:${out.normalized}）`);
     await refresh();
   } catch (e) {
     alert(e.message || String(e));
