@@ -13,6 +13,11 @@
     .list{display:grid;gap:10px;margin-top:12px}
     .item{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);padding:10px;border-radius:14px}
     .item img{width:84px;height:56px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+    .thumbPh{
+      width:84px;height:56px;border-radius:10px;border:1px solid rgba(255,255,255,.12);
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(255,255,255,.04);color:rgba(255,255,255,.65);font-size:11px;
+    }
     .grow{flex:1;min-width:0}
     .small2{opacity:.85;font-size:12px;word-break:break-all}
     .danger{border:1px solid rgba(255,0,0,.25)}
@@ -135,19 +140,46 @@ function escapeJs(s) {
   return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'");
 }
 
+// ★追加：path からURLを作るとき、セグメントごとに encode（日本語/スペース対応）
+function encodePathForUrl(path) {
+  return String(path || "").split("/").map(seg => encodeURIComponent(seg)).join("/");
+}
+
+// ★追加：カテゴリの文字化けを表示側でも矯正（Workerも直すけど、見た目も安定）
+function normalizeCategory(c) {
+  const s = String(c || "").trim() || "未分類";
+  const bad = new Set(["æªåé¡", "Ã¦ÂÂªÃ¥ÂÂÃ©Â¡Â"]);
+  if (bad.has(s)) return "未分類";
+  return s;
+}
+
+// ★追加：サムネ404時に “NO IMAGE” に置換
+function onThumbError(imgEl) {
+  const ph = document.createElement("div");
+  ph.className = "thumbPh";
+  ph.textContent = "NO IMAGE";
+  imgEl.replaceWith(ph);
+}
+
 function renderItems(items) {
-  $("list").innerHTML = items.map(x => {
+  $("list").innerHTML = items.map((x, idx) => {
     const path = x.path || ("images/" + (x.filename || ""));
-    const url = x.url || ("./" + path);
+    // url が無い場合の保険：相対URLを安全に組み立てる
+    const url = x.url || ("./" + encodePathForUrl(path));
     const label = x.title || x.filename || x.path || "(unknown)";
+    const cat = normalizeCategory(x.category || "未分類");
+    const tagStr = (x.tags||[]).join(", ");
+
+    const imgId = "thumb_" + idx;
+
     return `
       <div class="item">
-        <img src="${escapeHtml(url)}" alt="">
+        <img id="${imgId}" src="${escapeHtml(url)}" alt="">
         <div class="grow">
           <div><b>${escapeHtml(label)}</b></div>
           <div class="small2 mono">${escapeHtml(path)}</div>
           <div class="small2 mono">${escapeHtml(url)}</div>
-          <div class="small2">カテゴリ: ${escapeHtml(x.category || "未分類")} / タグ: ${(x.tags||[]).map(escapeHtml).join(", ")}</div>
+          <div class="small2">カテゴリ: ${escapeHtml(cat)} / タグ: ${escapeHtml(tagStr)}</div>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button type="button" onclick="copyText('${escapeJs(url)}')">URLコピー</button>
@@ -156,6 +188,12 @@ function renderItems(items) {
       </div>
     `;
   }).join("") || `<div class="small" style="opacity:.8;">まだ何もありません</div>`;
+
+  // onerror を後付け（HTML内でonerror書くより安全）
+  items.forEach((_, idx) => {
+    const el = document.getElementById("thumb_" + idx);
+    if (el) el.addEventListener("error", () => onThumbError(el));
+  });
 }
 
 async function refresh() {
@@ -220,10 +258,10 @@ async function doUpload() {
 }
 
 async function doDelete(path) {
-  if (!confirm(`削除する？\n${path}`)) return;
+  if (!confirm(`削除する？\n${path}\n\n※画像が既に無い場合でも、一覧(images.json)からは消えます`)) return;
   try {
-    await api("/delete", { filename: path });
-    toast("削除しました");
+    const out = await api("/delete", { filename: path });
+    toast(out.fileDeleted ? "削除しました" : "一覧から削除しました（実ファイルは既に無し）");
     await refresh();
   } catch (e) {
     alert(e.message || String(e));
