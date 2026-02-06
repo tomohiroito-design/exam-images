@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>画像アップローダー</title>
+  <title>画像アップローダー（管理）</title>
   <link rel="stylesheet" href="./assets/style.css" />
   <style>
     .panel { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; }
@@ -16,7 +16,7 @@
     .grow { flex: 1; min-width: 0; }
     .small2 { opacity:.85; font-size:12px; word-break:break-all; }
     .danger { border:1px solid rgba(255,0,0,.25); }
-    input[type="password"], input[type="text"]{
+    input[type="text"]{
       width:100%;
       padding:10px 12px;
       border-radius:12px;
@@ -25,57 +25,33 @@
       color: inherit;
       outline: none;
     }
-    .keyState { opacity:.9; font-size: 12px; }
-    .btnRow { display:flex; gap:10px; flex-wrap:wrap; }
-    .log { white-space: pre-wrap; font-size: 12px; opacity: .9; background: rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:10px; }
-    a.btnLike {
-      text-decoration:none; display:inline-flex; align-items:center; justify-content:center;
-      padding:10px 14px; border-radius:12px;
-    }
   </style>
 </head>
 <body>
   <header>
     <div class="wrap">
-      <h1>画像アップローダー</h1>
-      <div class="sub">合言葉は sessionStorage に保存（このタブを閉じるまで有効）</div>
-
+      <h1>画像アップローダー（管理）</h1>
+      <div class="sub">入室（テンキー認証）後に操作できます</div>
       <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-        <a class="primary btnLike" href="./">← 画像格納庫へ戻る</a>
+        <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
+           href="./">← ホームへ</a>
+        <button id="logout" type="button">退出（トークン削除）</button>
       </div>
-
       <div id="toast" class="toast" style="display:none;"></div>
     </div>
   </header>
 
   <main class="wrap">
-    <section class="panel">
-      <h2 style="margin:0 0 10px;">接続先（Worker）</h2>
-      <div class="small2 mono" id="workerUrl"></div>
-      <div class="row" style="margin-top:10px;">
-        <div class="btnRow">
-          <button id="testConn" type="button">接続テスト</button>
-          <button id="testPreflight" type="button">プレフライト確認</button>
-        </div>
-        <div class="small2" id="netState"></div>
+    <section class="panel" id="needAuth" style="display:none;">
+      <h2 style="margin:0 0 10px;">入室が必要です</h2>
+      <div class="small2">ホーム画面の「格納庫（管理ページ）」からテンキーで入室してください。</div>
+      <div style="margin-top:10px;">
+        <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
+           href="./">入室画面へ戻る</a>
       </div>
     </section>
 
-    <section class="panel" style="margin-top:14px;">
-      <h2 style="margin:0 0 10px;">合言葉</h2>
-      <div class="row">
-        <div>
-          <input id="keyInput" type="password" placeholder="合言葉を入力して保存" autocomplete="current-password" />
-          <div id="keyState" class="keyState"></div>
-        </div>
-        <div class="btnRow">
-          <button id="saveKey" class="primary" type="button">保存</button>
-          <button id="clearKey" type="button">消す</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" style="margin-top:14px;">
+    <section class="panel" id="mainUi">
       <h2 style="margin:0 0 10px;">アップロード</h2>
       <div class="row">
         <input id="title" type="text" placeholder="タイトル（任意）" />
@@ -96,304 +72,200 @@
       </div>
       <div id="list" class="list"></div>
     </section>
-
-    <section class="panel" style="margin-top:14px;">
-      <h2 style="margin:0 0 10px;">ログ</h2>
-      <div id="log" class="log"></div>
-    </section>
   </main>
 
 <script>
-  // ★ここが間違ってると、全部 "Failed to fetch" になります
-  const WORKER = "https://exam-image-uploader.tomohiro-ito.workers.dev";
+const WORKER = "https://exam-image-uploader.tomohiro-ito.workers.dev";
+const TOKEN_KEY = "ADMIN_TOKEN";
+const $ = (id) => document.getElementById(id);
 
-  const KEY_NAME = "ADMIN_KEY";
-  const $ = (id) => document.getElementById(id);
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.style.display = "block";
+  clearTimeout(window.__t);
+  window.__t = setTimeout(() => (el.style.display = "none"), 1600);
+}
 
-  function toast(msg) {
-    const el = $("toast");
-    el.textContent = msg;
-    el.style.display = "block";
-    clearTimeout(window.__t);
-    window.__t = setTimeout(() => (el.style.display = "none"), 1600);
-  }
+function getToken() {
+  try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+}
 
-  function log(msg, extra) {
-    const t = new Date().toLocaleTimeString();
-    let line = `[${t}] ${msg}`;
-    if (extra !== undefined) {
-      try { line += "\n" + JSON.stringify(extra, null, 2); }
-      catch { line += "\n" + String(extra); }
-    }
-    $("log").textContent = (line + "\n\n" + ($("log").textContent || "")).slice(0, 20000);
-  }
-
-  function getKey() {
-    try { return sessionStorage.getItem(KEY_NAME) || ""; }
-    catch { return ""; }
-  }
-
-  function setKeyState() {
-    let ok = false;
-    try { ok = !!sessionStorage.getItem(KEY_NAME); }
-    catch (e) {
-      $("keyState").textContent = "この環境では sessionStorage が使えません（ブラウザ設定/拡張機能の可能性）";
-      log("sessionStorage error", { message: e.message || String(e) });
-      return;
-    }
-    $("keyState").textContent = ok
-      ? "保存済み（このタブを閉じるまで有効）"
-      : "未設定（保存してから操作できます）";
-  }
-
-  function setNetState() {
-    $("netState").textContent =
-      `online=${navigator.onLine ? "true" : "false"} / origin=${location.origin}`;
-  }
-
-  async function toBase64DataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = reject;
-      r.readAsDataURL(file);
-    });
-  }
-
-  async function safeReadJson(res) {
-    const text = await res.text();
-    try { return JSON.parse(text); }
-    catch { return { ok:false, error:"Response is not JSON", raw:text, status: res.status }; }
-  }
-
-  async function api(path, body) {
-    const key = getKey();
-    if (!key) throw new Error("合言葉が未設定です（上で保存してください）");
-
-    let res;
-    try {
-      res = await fetch(WORKER + path, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Admin-Key": key,
-        },
-        body: JSON.stringify(body),
-      });
-    } catch (e) {
-      // ここが "Failed to fetch" の正体
-      log("fetch failed", {
-        worker: WORKER,
-        path,
-        online: navigator.onLine,
-        message: e.message || String(e),
-      });
-      throw e;
-    }
-
-    const data = await safeReadJson(res);
-    if (!res.ok || data.ok === false) {
-      log("api error", { status: res.status, data });
-      throw new Error((data && (data.error || data.message)) ? (data.error || data.message) : `HTTP ${res.status}`);
-    }
-    return data;
-  }
-
-  async function loadList() {
-    const res = await fetch("./images.json", { cache: "no-store" });
-    const data = await safeReadJson(res);
-    if (!res.ok) {
-      log("failed to load images.json", data);
-      return [];
-    }
-    return Array.isArray(data) ? data : [];
-  }
-
-  function renderItems(items) {
-    $("list").innerHTML = items.map(x => {
-      const path = x.path || ("images/" + (x.filename || ""));
-      const url = x.url || ("./" + path);
-      const label = x.title || x.filename || x.path || "(unknown)";
-      return `
-        <div class="item">
-          <img src="${escapeHtml(url)}" alt="">
-          <div class="grow">
-            <div><b>${escapeHtml(label)}</b></div>
-            <div class="small2 mono">${escapeHtml(path)}</div>
-            <div class="small2 mono">${escapeHtml(url)}</div>
-            <div class="small2">カテゴリ: ${escapeHtml(x.category || "未分類")} / タグ: ${(x.tags||[]).map(escapeHtml).join(", ")}</div>
-          </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button type="button" onclick="copyText('${escapeJs(url)}')">URLコピー</button>
-            <button class="primary" type="button" onclick="doDelete('${escapeJs(path)}')">削除</button>
-          </div>
-        </div>
-      `;
-    }).join("") || `<div class="small" style="opacity:.8;">まだ何もありません</div>`;
-  }
-
-  async function refresh() {
-    const items = await loadList();
-    renderItems(items);
-  }
-
-  async function doUpload() {
-    const files = $("file").files;
-    if (!files || !files.length) { toast("ファイルを選んでね"); return; }
-
-    const category = $("category").value.trim();
-    const tags = $("tags").value.trim();
-    const title = $("title").value.trim();
-
-    $("result").innerHTML = "";
-    $("upload").disabled = true;
-
-    try {
-      for (const file of files) {
-        const base64 = await toBase64DataUrl(file);
-        try {
-          const out = await api("/upload", {
-            filename: file.name,
-            base64,
-            category,
-            tags,
-            title: title || file.name
-          });
-
-          $("result").insertAdjacentHTML("beforeend", `
-            <div class="item">
-              <img src="${escapeHtml(out.url)}" alt="">
-              <div class="grow">
-                <div><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
-                <div class="small2 mono">${escapeHtml(out.url)}</div>
-              </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button type="button" onclick="copyText('${escapeJs(out.url)}')">URLコピー</button>
-                <a class="primary btnLike" href="${escapeHtml(out.url)}" target="_blank" rel="noopener">開く</a>
-              </div>
-            </div>
-          `);
-
-        } catch (e) {
-          $("result").insertAdjacentHTML("beforeend", `
-            <div class="item danger">
-              <div class="grow">
-                <div><b>失敗</b>：${escapeHtml(file.name)}</div>
-                <div class="small2 mono">${escapeHtml(e.message || String(e))}</div>
-              </div>
-            </div>
-          `);
-        }
-      }
-
-      await refresh();
-      toast("完了");
-    } finally {
-      $("upload").disabled = false;
-      $("file").value = "";
-    }
-  }
-
-  async function doDelete(path) {
-    if (!getKey()) { toast("合言葉が未設定です"); return; }
-    if (!confirm(`削除する？\n${path}`)) return;
-
-    try {
-      await api("/delete", { filename: path }); // pathを送る
-      toast("削除しました");
-      await refresh();
-    } catch (e) {
-      alert(e.message || String(e));
-    }
-  }
-
-  async function copyText(text) {
-    await navigator.clipboard.writeText(text);
-    toast("コピーしました");
-  }
-
-  async function testConn() {
-    try {
-      log("connect test start", { worker: WORKER });
-      const res = await fetch(WORKER + "/", { method: "GET" });
-      const txt = await res.text();
-      log("connect test result", { status: res.status, body: txt.slice(0, 200) });
-      toast("接続OK");
-    } catch (e) {
-      log("connect test failed", { message: e.message || String(e), worker: WORKER });
-      alert(`接続できません: ${e.message || e}`);
-    }
-  }
-
-  async function testPreflight() {
-    // ブラウザは自動でOPTIONSするけど、原因切り分け用に明示的に叩く
-    try {
-      log("preflight test start", { worker: WORKER });
-      const res = await fetch(WORKER + "/delete", {
-        method: "OPTIONS",
-        headers: {
-          "Access-Control-Request-Method": "POST",
-          "Access-Control-Request-Headers": "content-type,x-admin-key",
-          "Origin": location.origin,
-        }
-      });
-      log("preflight test result", { status: res.status, allowOrigin: res.headers.get("access-control-allow-origin"), allowHeaders: res.headers.get("access-control-allow-headers") });
-      toast("プレフライト確認OK");
-    } catch (e) {
-      log("preflight test failed", { message: e.message || String(e), worker: WORKER });
-      alert(`プレフライト失敗: ${e.message || e}`);
-    }
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replaceAll("&","&amp;").replaceAll("<","&lt;")
-      .replaceAll(">","&gt;").replaceAll('"',"&quot;")
-      .replaceAll("'","&#039;");
-  }
-  function escapeJs(s) {
-    return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'");
-  }
-
-  window.doDelete = doDelete;
-  window.copyText = copyText;
-
-  window.addEventListener("DOMContentLoaded", async () => {
-    $("workerUrl").textContent = WORKER;
-
-    setNetState();
-    setKeyState();
-
-    $("saveKey").addEventListener("click", () => {
-      const v = ($("keyInput").value || "").trim();
-      if (!v) { toast("合言葉が空です"); return; }
-      try {
-        sessionStorage.setItem(KEY_NAME, v);
-      } catch (e) {
-        log("failed to save key (sessionStorage)", { message: e.message || String(e) });
-        alert("合言葉を保存できません。ブラウザ設定/拡張機能を確認してください。");
-        return;
-      }
-      $("keyInput").value = "";
-      setKeyState();
-      toast("合言葉を保存しました");
-      log("key saved", { length: v.length });
-    });
-
-    $("clearKey").addEventListener("click", () => {
-      try { sessionStorage.removeItem(KEY_NAME); } catch {}
-      setKeyState();
-      toast("合言葉を消しました");
-      log("key cleared");
-    });
-
-    $("upload").addEventListener("click", doUpload);
-    $("reload").addEventListener("click", () => refresh().then(() => toast("更新しました")));
-    $("testConn").addEventListener("click", testConn);
-    $("testPreflight").addEventListener("click", testPreflight);
-
-    await refresh();
+async function toBase64DataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
   });
+}
+
+async function safeReadJson(res) {
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch { return { ok:false, error:"Response is not JSON", raw:text, status: res.status }; }
+}
+
+async function api(path, body) {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+
+  const res = await fetch(WORKER + path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Token": token,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await safeReadJson(res);
+  if (!res.ok || data.ok === false) {
+    throw new Error((data && (data.error || data.message)) ? (data.error || data.message) : `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+async function loadList() {
+  const res = await fetch("./images.json", { cache: "no-store" });
+  const data = await safeReadJson(res);
+  if (!res.ok) return [];
+  return Array.isArray(data) ? data : [];
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+function escapeJs(s) {
+  return String(s).replaceAll("\\","\\\\").replaceAll("'","\\'");
+}
+
+function renderItems(items) {
+  $("list").innerHTML = items.map(x => {
+    const path = x.path || ("images/" + (x.filename || ""));
+    const url = x.url || ("./" + path);
+    const label = x.title || x.filename || x.path || "(unknown)";
+    return `
+      <div class="item">
+        <img src="${escapeHtml(url)}" alt="">
+        <div class="grow">
+          <div><b>${escapeHtml(label)}</b></div>
+          <div class="small2 mono">${escapeHtml(path)}</div>
+          <div class="small2 mono">${escapeHtml(url)}</div>
+          <div class="small2">カテゴリ: ${escapeHtml(x.category || "未分類")} / タグ: ${(x.tags||[]).map(escapeHtml).join(", ")}</div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" onclick="copyText('${escapeJs(url)}')">URLコピー</button>
+          <button class="primary" type="button" onclick="doDelete('${escapeJs(path)}')">削除</button>
+        </div>
+      </div>
+    `;
+  }).join("") || `<div class="small" style="opacity:.8;">まだ何もありません</div>`;
+}
+
+async function refresh() {
+  const items = await loadList();
+  renderItems(items);
+}
+
+async function doUpload() {
+  const files = $("file").files;
+  if (!files || !files.length) { toast("ファイルを選んでね"); return; }
+
+  const category = $("category").value.trim();
+  const tags = $("tags").value.trim();
+  const title = $("title").value.trim();
+
+  $("result").innerHTML = "";
+  $("upload").disabled = true;
+
+  try {
+    for (const file of files) {
+      const base64 = await toBase64DataUrl(file);
+      try {
+        const out = await api("/upload", {
+          filename: file.name,
+          base64,
+          category,
+          tags,
+          title: title || file.name
+        });
+
+        $("result").insertAdjacentHTML("beforeend", `
+          <div class="item">
+            <img src="${escapeHtml(out.url)}" alt="">
+            <div class="grow">
+              <div><b>アップロード完了</b>：${escapeHtml(file.name)}</div>
+              <div class="small2 mono">${escapeHtml(out.url)}</div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button type="button" onclick="copyText('${escapeJs(out.url)}')">URLコピー</button>
+              <a class="primary" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px;"
+                 href="${escapeHtml(out.url)}" target="_blank" rel="noopener">開く</a>
+            </div>
+          </div>
+        `);
+      } catch (e) {
+        $("result").insertAdjacentHTML("beforeend", `
+          <div class="item danger">
+            <div class="grow">
+              <div><b>失敗</b>：${escapeHtml(file.name)}</div>
+              <div class="small2 mono">${escapeHtml(e.message || String(e))}</div>
+            </div>
+          </div>
+        `);
+      }
+    }
+    await refresh();
+    toast("完了");
+  } finally {
+    $("upload").disabled = false;
+    $("file").value = "";
+  }
+}
+
+async function doDelete(path) {
+  if (!confirm(`削除する？\n${path}`)) return;
+  try {
+    await api("/delete", { filename: path });
+    toast("削除しました");
+    await refresh();
+  } catch (e) {
+    alert(e.message || String(e));
+  }
+}
+
+async function copyText(text) {
+  await navigator.clipboard.writeText(text);
+  toast("コピーしました");
+}
+
+window.doDelete = doDelete;
+window.copyText = copyText;
+
+window.addEventListener("DOMContentLoaded", async () => {
+  const token = getToken();
+  if (!token) {
+    $("needAuth").style.display = "block";
+    $("mainUi").style.display = "none";
+  } else {
+    $("needAuth").style.display = "none";
+    $("mainUi").style.display = "block";
+  }
+
+  $("logout").addEventListener("click", () => {
+    try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
+    toast("退出しました");
+    setTimeout(() => location.href = "./", 500);
+  });
+
+  $("upload").addEventListener("click", doUpload);
+  $("reload").addEventListener("click", () => refresh().then(() => toast("更新しました")));
+  await refresh();
+});
 </script>
 </body>
 </html>
