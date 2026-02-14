@@ -1,9 +1,18 @@
 [
   {
-    "filename": "呉さん.jpg",
-    "path": "images/呉さん.jpg",
+    "filename": "高炉.jpg",
+    "path": "images/高炉.jpg",
+    "url": "https://tomohiroito-design.github.io/exam-images/images/%E9%AB%98%E7%82%89.jpg",
+    "title": "高炉",
+    "category": "未分類",
+    "tags": [],
+    "updatedAt": "2026-02-14T08:39:14.229Z"
+  },
+  {
+    "filename": "åãã.jpg",
+    "path": "images/åãã.jpg",
     "url": "https://tomohiroito-design.github.io/exam-images/images/%E5%91%89%E3%81%95%E3%82%93.jpg",
-    "title": "呉さん",
+    "title": "åãã",
     "category": "未分類",
     "tags": [],
     "updatedAt": "2026-02-14T08:39:10.713Z"
