@@ -1,9 +1,18 @@
 [
   {
-    "filename": "高炉.jpg",
-    "path": "images/高炉.jpg",
+    "filename": "鉄瓶.jpg",
+    "path": "images/鉄瓶.jpg",
+    "url": "https://tomohiroito-design.github.io/exam-images/images/%E9%89%84%E7%93%B6.jpg",
+    "title": "鉄瓶",
+    "category": "未分類",
+    "tags": [],
+    "updatedAt": "2026-02-14T08:39:17.558Z"
+  },
+  {
+    "filename": "é«ç.jpg",
+    "path": "images/é«ç.jpg",
     "url": "https://tomohiroito-design.github.io/exam-images/images/%E9%AB%98%E7%82%89.jpg",
-    "title": "高炉",
+    "title": "é«ç",
     "category": "未分類",
     "tags": [],
     "updatedAt": "2026-02-14T08:39:14.229Z"
